@@ -68,8 +68,8 @@ const int S_THEME_SONG = 7;
 #include "SevenSegmentTM1637.h"
 #include "SevenSegmentExtended.h"
 #include "SevenSegmentFun.h"
-#include "EightSegment.h"
-#include <ShiftDisplay.h>
+//#include "EightSegment.h"
+//#include <ShiftDisplay.h>
 // include the WS2801 library
 #include "Adafruit_WS2801.h"
 #include "SPI.h" // Comment out this line if using Trinket or Gemma
@@ -90,17 +90,20 @@ const int S_THEME_SONG = 7;
 const byte PIN_CLK = 2;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 3;   // define DIO pin (any digital pin)
 // 6 Digit 7-Segment Display Pins
-const byte PIN_6RCK = 4;  // 6 digit RCK (latch) pin
+const byte PIN_6RCK = 4;  // 6 digit RCK (latch) pin  (This pin is no longer used with new 6 segment chips.
 const byte PIN_6SCK = 5;  // 6 digit SCK (clock) pin
 const byte PIN_6DIO = 6;  // 6 digit DIO pin
 //  WS2801 PINS for Synchrotron, Gun Barrell, & Tip
 uint8_t dataPin  = 8;    // DIO (White) on WS2801 Pixels 
 uint8_t clockPin = 7;    // Clock (Green) on WS2801 Pixels 
 // Pins for the Buttons and Switches
-const int PIN_MainPower = 11; //Main power switch
-const int PIN_Trigger = 12; //Trigger Button
-const int PIN_Theme = 13; //Button to play theme song
-
+const int PIN_MainPower = A1; //Main power switch
+const int PIN_Trigger = A2; //Trigger Button
+const int PIN_Theme = A3; //Button to play theme song
+//PINS to trigger sounds
+const int PIN_Snd_Running = 9; //Powerup
+const int PIN_Snd_Firing = 10; //Firing
+const int PIN_Snd_Theme = 11; //Button to play theme song
 
 /*
  * Setup for the 6 Digit delay??? Not sure why this is used.
@@ -133,7 +136,8 @@ int effOneLength;  // Cntr used by first effect, Length of the effect.  We may e
 
 
 SevenSegmentFun    fourDigit(PIN_CLK, PIN_DIO);  // setup 4 digit display
-ShiftDisplay sixDigit(PIN_6RCK,PIN_6SCK,PIN_6DIO, COMMON_CATHODE, 6); // setup 6 digit display
+SevenSegmentFun    sixDigit(PIN_6SCK, PIN_6DIO);  // setup 6 digit display
+//ShiftDisplay sixDigit(PIN_6RCK,PIN_6SCK,PIN_6DIO, COMMON_CATHODE, 6); // setup 6 digit display
 
 // Don't forget to connect the ground wire to Arduino ground,
 // and the +5V wire to a +5V supply
@@ -147,10 +151,22 @@ void setup()
   fourDigit.begin();            // initializes the display
   fourDigit.setBacklight(25);  // set the brightness to 50 %
   //Sets up the 6 digit display
-  pinMode(PIN_6SCK, OUTPUT); // sets the digital pin as output
-  pinMode(PIN_6RCK, OUTPUT); // sets the digital pin as output
-  pinMode(PIN_6DIO, OUTPUT); // sets the digital pin as output
+  sixDigit.begin();
+  sixDigit.setBacklight(25);
+ /* REMOVE OLD 6-digit code    
+    
+  //pinMode(PIN_6SCK, OUTPUT); // sets the digital pin as output
+  //pinMode(PIN_6RCK, OUTPUT); // sets the digital pin as output
+  //pinMode(PIN_6DIO, OUTPUT); // sets the digital pin as output
+*/
+  pinMode(PIN_Snd_Running, OUTPUT);
+  pinMode(PIN_Snd_Firing, OUTPUT);
+  pinMode(PIN_Snd_Theme, OUTPUT);
 
+  digitalWrite(PIN_Snd_Running, HIGH);
+  digitalWrite(PIN_Snd_Firing, HIGH);
+  digitalWrite(PIN_Snd_Theme, HIGH);
+  
   randomSeed(analogRead(0));  //don't like this random read
   mydigit1=random(1,1000)-1;
   mydigit2=random(1,1000)-1;
@@ -188,16 +204,20 @@ void loop()
       // Turn off 6,4, and all lights
     //  reset6Disp(); // resets the 6 digit display
      // byte clearbyte=B11111111;
-    for (int j=0;j<6;j++) {
+/* REMOVE OLD 6-digit code   
+  for (int j=0;j<6;j++) {
       digitalWrite(PIN_6RCK, LOW);
       shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, B11111111);
       shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, LOC[j]);
       digitalWrite(PIN_6RCK, HIGH);
     }
+   */
       strip.begin(); //resets the ws2801 lights
       strip.show();
       fourDigit.begin();            // 4-digit initializes the display
       fourDigit.setBacklight(25);  // set the brightness to 50 %
+      sixDigit.begin();            // 6-digit initializes the display
+      sixDigit.setBacklight(25);  // set the brightness to 50 %
       ts = millis();  // Remember the current time
       state = S_INITIALIZING;
  
@@ -210,8 +230,11 @@ void loop()
          * Insert code to start the power up sequence
          */
         int current_speed = 100 * (millis() - ts);
-        disp6Digit(current_speed); 
+/* REMOVE OLD 6-digit code           
+ * disp6Digit(current_speed);  
+ */
         fourDigit.print(0001);
+        sixDigit.print(123456);
         if (millis() > ts + time_init)
         {
           state = S_RUNNING;
@@ -224,8 +247,13 @@ void loop()
          /*
          * Insert code to maintain running mode
          */
-         disp6Digit(synchro_nom);
+         sixDigit.print(synchro_nom);
          fourDigit.print(volt_nom);
+
+        digitalWrite(PIN_Snd_Running, HIGH);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Theme, HIGH);
+  
       if ( digitalRead (PIN_MainPower) == LOW ) {
         ts = millis(); //remember the current time
         state = S_POWER_DOWN;
@@ -243,8 +271,10 @@ void loop()
          * Insert code to start the firing power up sequence
          */     
          // If two seconds have passed, then move on to the next state.
-        disp6Digit(1);
-        fourDigit.print(1);   
+        sixDigit.print(1);
+        fourDigit.print(1); 
+        digitalWrite(PIN_Snd_Running, LOW);
+          
       if (millis() > ts + time_fire_ru)
       {
         state = S_FIRING_CS;
@@ -256,8 +286,10 @@ void loop()
          /*
          * Insert code to continue firing
          */
-        disp6Digit(synchro_fire);
+        sixDigit.print(synchro_fire);
         fourDigit.print(volt_fire);
+        digitalWrite(PIN_Snd_Firing, LOW);
+        digitalWrite(PIN_Snd_Running, HIGH);
        if (digitalRead (PIN_Trigger) == LOW ) {
         ts = millis(); //remember the current time
         state = S_FIRING_RD;
@@ -270,8 +302,10 @@ void loop()
          /*
          * Insert code to ramp down the gun
          */
-         disp6Digit(2);
+         sixDigit.print(2);
         fourDigit.print(2);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Theme, LOW);
      if (millis() > ts + time_fire_rd)
       {
         state = S_RUNNING;
@@ -283,7 +317,7 @@ void loop()
          /*
          * Insert code to powerdown the system
          */
-        disp6Digit(3);
+        sixDigit.print(3);
         fourDigit.print(3);
       if (millis() > ts + time_pdown)
       {
@@ -329,12 +363,12 @@ void effOne() {
   effOneCnt--;
 }
 
-void setup6Digit() {
+/*void setup6Digit() {
   pinMode(PIN_6SCK, OUTPUT); // sets the digital pin as output
   pinMode(PIN_6RCK, OUTPUT); // sets the digital pin as output
   pinMode(PIN_6DIO, OUTPUT); // sets the digital pin as output
 };
-
+*/
 void synchr_spin() {
    for (int i=0;i<strip_synchro;i++) {
       strip.setPixelColor(i-1, Color(255, 0, 0));
@@ -343,7 +377,7 @@ void synchr_spin() {
       strip.show();  
    }
 }
-void reset6Disp() {
+/*void reset6Disp() {
       byte clearbyte=B11111111;
       for (int x=0;x<6;x++) {
    digitalWrite(PIN_6RCK, LOW);
@@ -382,7 +416,7 @@ void disp6Digit(long synchro) {
   }
   
 };
-
+*/
 /* Helper functions */
 
 // Create a 24 bit color value from R,G,B
