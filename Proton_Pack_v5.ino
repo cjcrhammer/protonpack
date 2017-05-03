@@ -68,6 +68,7 @@ const int S_THEME_SONG = 7;
 #include "SevenSegmentTM1637.h"
 #include "SevenSegmentExtended.h"
 #include "SevenSegmentFun.h"
+#include "EightSegment.h"
 #include <ShiftDisplay.h>
 // include the WS2801 library
 #include "Adafruit_WS2801.h"
@@ -100,60 +101,6 @@ const int PIN_MainPower = 11; //Main power switch
 const int PIN_Trigger = 12; //Trigger Button
 const int PIN_Theme = 13; //Button to play theme song
 
-/*
-   Setup Digits, Alpha, and Positial bytes for 6 digit display
-*/
-
-const byte NUMBERS[] = {
-        B00000011, // 0
-        B10011111, // 1
-        B00100101, // 2
-        B00001101, // 3
-        B10011001, // 4
-        B01001001, // 5
-        B01000001, // 6
-        B00011111, // 7
-        B00000001, // 8
-        B00011001, // 9
-};
-const byte CHAR[] = {
-        B00010001, // A
-        B00000001, // B
-        B01100011, // C
-        B10000101, // D
-        B01100001, // E
-        B01110001, // F
-        B00001001, // G
-        B10010001, // H
-        B10011111, // I
-        B10000111, // J
-        B10010001, // K
-        B11100011, // L
-        B00010011, // M
-        B11010101, // N
-        B11000101, // O
-        B00110001, // P
-        B00100001, // Q
-        B11110101, // R
-        B01001001, // S
-        B11110001, // T
-        B10000011, // U
-        B11000111, // V
-        B10000011, // W
-        B11011001, // X
-        B10001001, // Y
-        B00100101,// Z
-};
-
-
-const byte LOC[] = {
-        B00001000, // first digit
-        B00000100, // second digit
-        B00000010, // third digit
-        B10000000, // fourth digit
-        B01000000, // fifth digit
-        B00100000, // sixth digit
-}; 
 
 /*
  * Setup for the 6 Digit delay??? Not sure why this is used.
@@ -179,6 +126,12 @@ int currDigit;
 int cnt,x,i ;  // used in loop
 int my4digit;
 int mydigit1, mydigit2;   // stores first 3 and last 3 digits of 6 seg
+
+int effOnePos;
+int effOneCnt;
+int effOneLength;  // Cntr used by first effect, Length of the effect.  We may eventually put this in an array
+
+
 SevenSegmentFun    fourDigit(PIN_CLK, PIN_DIO);  // setup 4 digit display
 ShiftDisplay sixDigit(PIN_6RCK,PIN_6SCK,PIN_6DIO, COMMON_CATHODE, 6); // setup 6 digit display
 
@@ -214,6 +167,9 @@ void setup()
 
   // Update LED contents, to start they are all 'off'
   strip.show();
+  effOnePos=5; // Intitial position of effect
+  effOneLength=100;
+  effOneCnt=effOneLength;
 }
  
 void loop()
@@ -278,6 +234,8 @@ void loop()
         ts = millis(); //remember the current time
         state = S_FIRING_RU;
       }
+      effOne();
+      strip.show();
       break;
  
     case S_FIRING_RU:
@@ -358,6 +316,19 @@ void loop()
   // put your setup code here, to run once:
 
 //}
+
+void effOne() {
+  if (effOneCnt < 1) {
+    effOnePos++;
+    if (effOnePos > 12) {
+      effOnePos=5;
+    }
+    effOneCnt=effOneLength;
+  }
+  cyclotronSiren(effOnePos);
+  effOneCnt--;
+}
+
 void setup6Digit() {
   pinMode(PIN_6SCK, OUTPUT); // sets the digital pin as output
   pinMode(PIN_6RCK, OUTPUT); // sets the digital pin as output
