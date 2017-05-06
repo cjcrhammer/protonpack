@@ -68,6 +68,7 @@ const int S_THEME_SONG = 7;
 #include "SevenSegmentTM1637.h"
 #include "SevenSegmentExtended.h"
 #include "SevenSegmentFun.h"
+#include "6DigitFix.h"
 //#include "EightSegment.h"
 //#include <ShiftDisplay.h>
 // include the WS2801 library
@@ -90,40 +91,43 @@ const int S_THEME_SONG = 7;
 const byte PIN_CLK = 2;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 3;   // define DIO pin (any digital pin)
 // 6 Digit 7-Segment Display Pins
-const byte PIN_6RCK = 4;  // 6 digit RCK (latch) pin  (This pin is no longer used with new 6 segment chips.
-const byte PIN_6SCK = 5;  // 6 digit SCK (clock) pin
-const byte PIN_6DIO = 6;  // 6 digit DIO pin
+const byte PIN_6CLK = 4;  // 6 digit Clock 
+const byte PIN_6DIO = 5;  // 6 digit DIO PIN 
 //  WS2801 PINS for Synchrotron, Gun Barrell, & Tip
 uint8_t dataPin  = 8;    // DIO (White) on WS2801 Pixels 
 uint8_t clockPin = 7;    // Clock (Green) on WS2801 Pixels 
 // Pins for the Buttons and Switches
-const int PIN_MainPower = A1; //Main power switch
-const int PIN_Trigger = A2; //Trigger Button
-const int PIN_Theme = A3; //Button to play theme song
+const int PIN_MainPower = 9; //Main power switch
+const int PIN_Trigger = 10; //Trigger Button
+const int PIN_Theme = 11; //Button to play theme song
 //PINS to trigger sounds
-const int PIN_Snd_Running = 9; //Powerup
-const int PIN_Snd_Firing = 10; //Firing
-const int PIN_Snd_Theme = 11; //Button to play theme song
-
+const int PIN_Snd_Fire_Up = A1; //Powerup of firing ramp up
+const int PIN_Snd_Firing = A2; //Firing
+const int PIN_Snd_Fire_Down = A3; //Power down of firing
+const int PIN_Snd_Theme = A4; //Theme Song
 /*
  * Setup for the 6 Digit delay??? Not sure why this is used.
  */
+ long counter=123456;
+long Sixtimer;
 const int digit6Delay=1000;  // 6 digit delay has to be larger than 4 digit delay
 const long synchro_nom=408346;  //This is the number the 6-digit display is usually around in normal state
 const long synchro_fire=210000; //This is the number the 6-digit display is usually around in firing state
 const int volt_nom=4332; //This is the number the 4-digit display is usually around in normal state
 const int volt_fire=2200; //This is the number the 4-digit display is usually around in firing state
   
-const int time_init = 5000; //time in milliseconds for the init screen to take place
-const int time_fire_ru = 2000; //time in milliseconds for the init of the firing
-const int time_fire_rd = 3000; //time in milleseconds for the ramp down from firing
+const int time_init = 4332; //time in milliseconds for the init screen to take place
+const int time_fire_ru = 500; //time in milliseconds for the init of the firing
+const int time_fire_rd = 400; //time in milleseconds for the ramp down from firing
 const int time_pdown = 4000; //time in milliseconds for the power down
+const long time_song = 7000; //time for the entire theme song
 
 const int strip_synchro = 20; //number of pixels for sycnhrotron
 const int strip_barrell = 8; //number of pixels for barrel
 const int strip_tip = 3; //number of pixels for tip
-
+int timer;
 int ramp_speed = synchro_nom / time_init; //Increments based on rpm/ms
+int bright;
         
 int currDigit; 
 int cnt,x,i ;  // used in loop
@@ -132,11 +136,18 @@ int mydigit1, mydigit2;   // stores first 3 and last 3 digits of 6 seg
 
 int effOnePos;
 int effOneCnt;
-int effOneLength;  // Cntr used by first effect, Length of the effect.  We may eventually put this in an array
+int effSpeed;  // Cntr used by first effect, Length of the effect.  We may eventually put this in an array
+
+int startSpeed;
+int endSpeed;
+int timeMark;
+int currSpeed;
+float marker;
 
 
 SevenSegmentFun    fourDigit(PIN_CLK, PIN_DIO);  // setup 4 digit display
-SevenSegmentFun    sixDigit(PIN_6SCK, PIN_6DIO);  // setup 6 digit display
+SevenSegmentTM1637 myDisplay(PIN_6CLK, PIN_6DIO);
+sixDigitSevenSeg mySix; // setup 6 digit display
 //ShiftDisplay sixDigit(PIN_6RCK,PIN_6SCK,PIN_6DIO, COMMON_CATHODE, 6); // setup 6 digit display
 
 // Don't forget to connect the ground wire to Arduino ground,
@@ -151,20 +162,16 @@ void setup()
   fourDigit.begin();            // initializes the display
   fourDigit.setBacklight(25);  // set the brightness to 50 %
   //Sets up the 6 digit display
-  sixDigit.begin();
-  sixDigit.setBacklight(25);
- /* REMOVE OLD 6-digit code    
-    
-  //pinMode(PIN_6SCK, OUTPUT); // sets the digital pin as output
-  //pinMode(PIN_6RCK, OUTPUT); // sets the digital pin as output
-  //pinMode(PIN_6DIO, OUTPUT); // sets the digital pin as output
-*/
-  pinMode(PIN_Snd_Running, OUTPUT);
-  pinMode(PIN_Snd_Firing, OUTPUT);
-  pinMode(PIN_Snd_Theme, OUTPUT);
+//  sixDigit.begin();
+//  sixDigit.setBacklight(25);
 
-  digitalWrite(PIN_Snd_Running, HIGH);
+  pinMode(PIN_Snd_Fire_Up, OUTPUT);
+  pinMode(PIN_Snd_Firing, OUTPUT);
+  pinMode(PIN_Snd_Fire_Down, OUTPUT);
+  pinMode(PIN_Snd_Theme, OUTPUT);
+  digitalWrite(PIN_Snd_Fire_Up, HIGH);
   digitalWrite(PIN_Snd_Firing, HIGH);
+  digitalWrite(PIN_Snd_Fire_Down, HIGH);
   digitalWrite(PIN_Snd_Theme, HIGH);
   
   randomSeed(analogRead(0));  //don't like this random read
@@ -184,8 +191,8 @@ void setup()
   // Update LED contents, to start they are all 'off'
   strip.show();
   effOnePos=5; // Intitial position of effect
-  effOneLength=100;
-  effOneCnt=effOneLength;
+  effSpeed=50; // speed of the effect default value
+  effOneCnt=effSpeed;
 }
  
 void loop()
@@ -200,98 +207,130 @@ void loop()
  
   switch (state)
   {
+      /*
+       * Insert code for powered off state
+       */
     case S_POWER_OFF:
-      // Turn off 6,4, and all lights
-    //  reset6Disp(); // resets the 6 digit display
-     // byte clearbyte=B11111111;
-/* REMOVE OLD 6-digit code   
-  for (int j=0;j<6;j++) {
-      digitalWrite(PIN_6RCK, LOW);
-      shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, B11111111);
-      shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, LOC[j]);
-      digitalWrite(PIN_6RCK, HIGH);
-    }
-   */
+      /*      LIGHT SETTINGS       */
       strip.begin(); //resets the ws2801 lights
       strip.show();
       fourDigit.begin();            // 4-digit initializes the display
       fourDigit.setBacklight(25);  // set the brightness to 50 %
-      sixDigit.begin();            // 6-digit initializes the display
-      sixDigit.setBacklight(25);  // set the brightness to 50 %
-      ts = millis();  // Remember the current time
-      state = S_INITIALIZING;
- 
+      mySix.displayNum(myDisplay,0, false); 
+      /*      SOUND SETTINGS       */
+      digitalWrite(PIN_Snd_Fire_Up, HIGH);
+      digitalWrite(PIN_Snd_Firing, HIGH);
+      digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
+     
+      if ( digitalRead (PIN_MainPower) == HIGH) {
+        mySix.displayNum(myDisplay,0, false); 
+        ts = millis();  // Remember the current time
+        state = S_INITIALIZING;
+      }
       break;
+      /*
+       * Insert code for powering up the system
+       */
  
     case S_INITIALIZING:
- 
-      if ( digitalRead (PIN_MainPower) == HIGH) {
-        /*
-         * Insert code to start the power up sequence
-         */
-        int current_speed = 100 * (millis() - ts);
-/* REMOVE OLD 6-digit code           
- * disp6Digit(current_speed);  
- */
-        fourDigit.print(0001);
-        sixDigit.print(123456);
-        if (millis() > ts + time_init)
-        {
+      /*      LIGHT SETTINGS       */
+        strip.show();
+        timer = millis()- ts;
+        fourDigit.print(timer);
+        Sixtimer = timer * 100L;
+        mySix.displayNum(myDisplay, Sixtimer , false);
+        //calculate the rotation speed to accelerate
+        startSpeed = 100;
+        endSpeed = 10;
+        timeMark = millis() - ts;
+        marker = ((float)timeMark/(float)time_init)*((float)startSpeed-(float)endSpeed);
+        currSpeed = startSpeed - marker;
+        bright = 127*((float)timeMark/(float)time_init);
+        effOne(currSpeed,bright);
+        Ramp(bright, 0, 3); //Inner circle synchrotron
+        Ramp(bright, 20,27); //barrell
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
+        if (millis() > ts + time_init) {
           state = S_RUNNING;
         }
-      }
- 
+
       break;
  
     case S_RUNNING:
          /*
          * Insert code to maintain running mode
          */
-         sixDigit.print(synchro_nom);
-         fourDigit.print(volt_nom);
-
-        digitalWrite(PIN_Snd_Running, HIGH);
+      /*      LIGHT SETTINGS       */
+        mySix.displayNum(myDisplay,synchro_nom, true);
+        fourDigit.print(volt_nom);
+        //synchr_spin();
+        effOne(10,127);
+        strip.show();
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
         digitalWrite(PIN_Snd_Firing, HIGH);
-        digitalWrite(PIN_Snd_Theme, HIGH);
-  
-      if ( digitalRead (PIN_MainPower) == LOW ) {
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
+      if (digitalRead(PIN_MainPower) == LOW) {
         ts = millis(); //remember the current time
         state = S_POWER_DOWN;
       }
-      if (digitalRead (PIN_Trigger) == HIGH ) {
+      if (digitalRead(PIN_Trigger) == HIGH ) {
         ts = millis(); //remember the current time
         state = S_FIRING_RU;
       }
-      effOne();
-      strip.show();
+      if (digitalRead(PIN_Theme) == HIGH) { 
+        ts = millis(); //remember the current time
+        state= S_THEME_SONG;
+      }
+
       break;
  
     case S_FIRING_RU:
          /*
          * Insert code to start the firing power up sequence
          */     
-         // If two seconds have passed, then move on to the next state.
-        sixDigit.print(1);
-        fourDigit.print(1); 
-        digitalWrite(PIN_Snd_Running, LOW);
-          
-      if (millis() > ts + time_fire_ru)
-      {
+       /*      LIGHT SETTINGS       */
+        mySix.displayNum(myDisplay,synchro_fire, true);
+        fourDigit.print(1234); 
+        //synchr_spin();
+        effOne(10,127);
+        strip.show();
+        tipFlash(255);
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, LOW);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
+      if (millis() > ts + time_fire_ru){
+        ts = millis(); //remember the current time
         state = S_FIRING_CS;
       }
- 
-      break;
+       break;
  
     case S_FIRING_CS:
          /*
          * Insert code to continue firing
          */
-        sixDigit.print(synchro_fire);
-        fourDigit.print(volt_fire);
+       /*      LIGHT SETTINGS       */
+        mySix.displayNum(myDisplay,synchro_fire+3, true);
+        fourDigit.print(volt_fire+3);
+        //synchr_spin();
+        effOne(10,127);
+        strip.show();
+        tipFlash(255);
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
         digitalWrite(PIN_Snd_Firing, LOW);
-        digitalWrite(PIN_Snd_Running, HIGH);
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
        if (digitalRead (PIN_Trigger) == LOW ) {
-        ts = millis(); //remember the current time
+        ts = millis(); //remember the time 
         state = S_FIRING_RD;
       }
 
@@ -302,12 +341,20 @@ void loop()
          /*
          * Insert code to ramp down the gun
          */
-         sixDigit.print(2);
+        /*      LIGHT SETTINGS       */
+        mySix.displayNum(myDisplay,synchro_fire, true);
         fourDigit.print(2);
+         //synchr_spin();
+        effOne(10,127);
+        strip.show();
+       tipFlash(255);
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
         digitalWrite(PIN_Snd_Firing, HIGH);
-        digitalWrite(PIN_Snd_Theme, LOW);
-     if (millis() > ts + time_fire_rd)
-      {
+        digitalWrite(PIN_Snd_Fire_Down, LOW);
+      /*      STATE CHANGES       */
+     if (millis() > ts + time_fire_rd) {
+        tipFlash(0);
         state = S_RUNNING;
       }
  
@@ -317,20 +364,46 @@ void loop()
          /*
          * Insert code to powerdown the system
          */
-        sixDigit.print(3);
-        fourDigit.print(3);
-      if (millis() > ts + time_pdown)
-      {
+         /*      LIGHT SETTINGS       */
+        strip.show();
+        mySix.displayNum(myDisplay,(time_pdown-timeMark)*100L, true);
+        fourDigit.print(timeMark);  
+        //calculate the rotation speed to accelerate
+        startSpeed = 100;
+        endSpeed = 10;
+        timeMark = millis() - ts;
+        marker = ((float)timeMark/(float)time_pdown)*((float)startSpeed-(float)endSpeed);
+        currSpeed = endSpeed + marker;
+        bright = 127-(127*(float)timeMark/(float)time_pdown);
+        effOne(currSpeed,bright);
+        Ramp(bright, 0, 3); //Inner circle synchrotron
+        Ramp(bright, 20,27);  //Barrell
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+      /*      STATE CHANGES       */
+      if (millis() > ts + time_pdown){
+        Ramp(0, 0, 27);
         state = S_POWER_OFF;
       }
-
       break;
  
     case S_THEME_SONG:
- 
-         /*
-         * Insert code to play the theme song
-         */
+         /*      LIGHT SETTINGS       */
+       mySix.displayNum(myDisplay,888888, true);
+        fourDigit.print(8888);  
+      /*      SOUND SETTINGS       */
+        digitalWrite(PIN_Snd_Fire_Up, HIGH);
+        digitalWrite(PIN_Snd_Firing, HIGH);
+        digitalWrite(PIN_Snd_Fire_Down, HIGH);
+        digitalWrite(PIN_Snd_Theme, LOW);
+      /*      STATE CHANGES       */
+       if (millis() > ts + time_song) {
+        digitalWrite(PIN_Snd_Theme, HIGH);
+        state = S_RUNNING;
+      }
+
       break;
  
   } // end of switch
@@ -351,15 +424,15 @@ void loop()
 
 //}
 
-void effOne() {
+void effOne(int effSpeed, int bright) { //sets the speed of the rotation
   if (effOneCnt < 1) {
     effOnePos++;
-    if (effOnePos > 12) {
-      effOnePos=5;
+    if (effOnePos == 12) {
+      effOnePos=4;
     }
-    effOneCnt=effOneLength;
+    effOneCnt=effSpeed;
   }
-  cyclotronSiren(effOnePos);
+  cyclotronSiren(effOnePos,bright);
   effOneCnt--;
 }
 
@@ -369,7 +442,7 @@ void effOne() {
   pinMode(PIN_6DIO, OUTPUT); // sets the digital pin as output
 };
 */
-void synchr_spin() {
+void synchr_spin(int speed) { //speed is a number to skip on the counter.  the larger the number the slower it is.
    for (int i=0;i<strip_synchro;i++) {
       strip.setPixelColor(i-1, Color(255, 0, 0));
       if (i==0) {strip.setPixelColor(20,Color(0,0,0));}
@@ -377,46 +450,7 @@ void synchr_spin() {
       strip.show();  
    }
 }
-/*void reset6Disp() {
-      byte clearbyte=B11111111;
-      for (int x=0;x<6;x++) {
-   digitalWrite(PIN_6RCK, LOW);
-   shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, clearbyte);
-   shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, LOC[x]);
-   digitalWrite(PIN_6RCK, HIGH);
-      }
-};
 
-void disp6OneD(int num, int dispnum) {
-  byte dispbyte  =  LOC[dispnum-1];
-  byte digitbyte =  NUMBERS[num];
-  digitalWrite(PIN_6RCK, LOW);
-  shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, digitbyte);
-  shiftOut(PIN_6DIO, PIN_6SCK, LSBFIRST, dispbyte);
-  digitalWrite(PIN_6RCK, HIGH);
-};
-
-void disp6Digit(long synchro) {
-  reset6Disp();
-  int nums[6] = {0,0,0,0,0,0};
-  long d1=(synchro/100000)%10;
-  long d2=(synchro/10000)%10;
-  long d3=(synchro/1000)%10;
-  long d4=(synchro/100)%10;
-  long d5=(synchro/10)%10;
-  long d6=(synchro)%10;
-  nums[0]=d1;
-  nums[1]=d2;
-  nums[2]=d3;
-  nums[3]=d4;
-  nums[4]=d5;
-  nums[5]=d6;
-  for (int x=0;x<6;x++) {
-    disp6OneD(nums[x], x+1);
-  }
-  
-};
-*/
 /* Helper functions */
 
 // Create a 24 bit color value from R,G,B
@@ -489,21 +523,21 @@ long getNextDigit(long minval, long maxval, int changeval) {
  return (retval);
 };
 
-void cyclotronSiren(int newpos) {
-        // rotation of the cyclotron is for pixels 5 through 12 (inner ring)
+void cyclotronSiren(int newpos, int bright) {
+        // rotation of the cyclotron is for pixels 5(4) through 12(11) (inner ring)
         //   we set the second half (outer ring) based on the first half (8-20) which mirrors 5-12
         // figure out the n-2, n-1, and n+1 pixel positions
         int a, b, c; // a = pixel to turn off (pos-2), b&c pixels to turn 50 red (pos-1 and pos+1)
-        if (newpos > 6) {
+        if (newpos > 5) {
                 a=newpos-2; // turn off pixel
                 b=newpos-1; // pos - 1 pixel
         } else {
-                if (newpos == 6) {
-                        a=12;  // turn off pixel
-                        b=5;   // pos - 1 pixel
-                } else {   // newpos == 5
+                if (newpos == 5) {
                         a=11;  // turn off pixel
-                        b=12;  // pos - 1 pixel
+                        b=4;   // pos - 1 pixel
+                } else {   // newpos == 5
+                        a=10;  // turn off pixel
+                        b=11;  // pos - 1 pixel
                 }
         }
         if (newpos < 12) {
@@ -514,15 +548,15 @@ void cyclotronSiren(int newpos) {
 
         // next set half the lights for the siren (5 thru 12)
         strip.setPixelColor(a, Color(0,0,0));
-        strip.setPixelColor(b, Color(127,0,0));
-        strip.setPixelColor(c, Color(127,0,0));
-        strip.setPixelColor(newpos, Color(255,0,0));
+        strip.setPixelColor(b, Color(bright,0,0));
+        strip.setPixelColor(c, Color(bright,0,0));
+        strip.setPixelColor(newpos, Color(bright*2,0,0));
 
         // next set the other half of the lights for the siren (13 thru 20)
         strip.setPixelColor(a+8, Color(0,0,0));
-        strip.setPixelColor(b+8, Color(127,0,0));
-        strip.setPixelColor(c+8, Color(127,0,0));
-        strip.setPixelColor(newpos+8, Color(255,0,0));
+        strip.setPixelColor(b+8, Color(bright,0,0));
+        strip.setPixelColor(c+8, Color(bright,0,0));
+        strip.setPixelColor(newpos+8, Color(bright*2,0,0));
 }
 
 // for ramping the cyclotron, use rampStart of 1 and rampEnd of 20
@@ -564,7 +598,7 @@ void tipFlash(int intensity) {
     }
    int randval;
    // Set the tip to the intensity level
-   for (int x=29; x<33; x++) {
+   for (int x=28; x<31; x++) {
       strip.setPixelColor(x, Color(intensity,intensity,intensity));
    }
 
@@ -572,7 +606,7 @@ void tipFlash(int intensity) {
    if (intensity > 0) {
       randval=random(1,100);
       if (randval <21) {
-         RandBlue(intensity, 29, 32);
+         RandBlue(intensity, 28, 30);
       }
    }
 }
